@@ -51,28 +51,10 @@ export function petSadStatHighlights(live: DecayedState): PetSadHighlight | null
   };
 }
 
-export function petMoodHint(live: DecayedState): string | null {
-  if (live.isSleeping) return null;
-  if (isPetMoodHappy(live)) return null;
-  const parts: string[] = [];
-  if (!(live.hygiene > 50 || live.fun > 50)) {
-    parts.push("Play or clean (hygiene or fun above 50)");
-  }
-  if (satiatedFromStoredHunger(live.hunger) <= 50) {
-    parts.push("Feed until satiated is above 50");
-  }
-  if (live.rest <= 50) {
-    parts.push("Sleep until energy is above 50");
-  }
-  return parts.length ? parts.join(" · ") : null;
-}
-
 export function PetSprite({ live }: { live: DecayedState }) {
   const sleeping = live.isSleeping;
   const happy = isPetMoodHappy(live);
   const sheet = sleeping ? SLEEP_SHEET : happy ? HAPPY_SHEET : SAD_SHEET;
-  const label = sleeping ? "Sleeping" : happy ? "Happy" : "Sad";
-  const hint = petMoodHint(live);
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -89,15 +71,16 @@ export function PetSprite({ live }: { live: DecayedState }) {
   const sheetW = SPRITE_VIEW_PX * SPRITE_FRAMES;
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div
-        className="relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 bg-cover bg-center shadow-inner dark:border-zinc-600"
-        style={{
-          backgroundImage: `url(${YARD_BACKGROUND})`,
-          backgroundPosition: "center 55%",
-        }}
-        aria-label={sleeping ? "Pet is sleeping" : `Pet mood: ${label}`}
-      >
+    <div
+      className="relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 bg-cover bg-center shadow-inner dark:border-zinc-600"
+      style={{
+        backgroundImage: `url(${YARD_BACKGROUND})`,
+        backgroundPosition: "center 55%",
+      }}
+      aria-label={
+        sleeping ? "Pet is sleeping" : happy ? "Pet is happy" : "Pet is sad"
+      }
+    >
         <div
           className="absolute bottom-10 left-1/2 z-[1] flex -translate-x-1/2 shrink-0 items-center justify-center overflow-hidden"
           style={{ width: SPRITE_VIEW_PX, height: SPRITE_VIEW_PX }}
@@ -123,13 +106,6 @@ export function PetSprite({ live }: { live: DecayedState }) {
           }}
           aria-hidden
         />
-      </div>
-      <div className="max-w-sm text-center">
-        <p className="text-sm font-medium text-foreground/60">{label}</p>
-        {hint ? (
-          <p className="mt-1 text-xs leading-snug text-foreground/45">{hint}</p>
-        ) : null}
-      </div>
     </div>
   );
 }
