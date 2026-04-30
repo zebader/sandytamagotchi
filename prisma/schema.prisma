@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Owner {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  pet       Pet?
+}
+
+model Pet {
+  id         String   @id @default(cuid())
+  ownerId    String   @unique
+  name       String   @default("Sandy")
+  hunger     Float
+  hygiene    Float
+  fun        Float
+  rest       Float
+  isSleeping Boolean  @default(false)
+  updatedAt  DateTime
+  createdAt  DateTime @default(now())
+  owner      Owner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+}

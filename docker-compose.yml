@@ -1,0 +1,21 @@
+# Postgres image: default is the official library mirror on AWS Public ECR (same image, different
+# registry). If *only* the Hub endpoint times out, this often still works. Override with
+# `POSTGRES_IMAGE=postgres:16-alpine` in a `.env` file next to this file.
+# See: https://gallery.ecr.aws/docker/library/postgres
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine}
+    # Avoid re-pulling on every up once the image exists locally
+    pull_policy: if_not_present
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tamagotchi
+      POSTGRES_PASSWORD: tamagotchi
+      POSTGRES_DB: tamagotchi
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
