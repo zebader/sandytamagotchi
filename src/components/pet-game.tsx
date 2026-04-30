@@ -17,7 +17,7 @@ import {
 import type { PetState } from "@/lib/pet-state";
 import { satiatedFromStoredHunger } from "@/lib/pet-display";
 import { applyTimeDecay, type DecayedState } from "@/lib/pet-time";
-import { PetSprite } from "@/components/pet-sprite";
+import { PetSprite, petSadStatHighlights } from "@/components/pet-sprite";
 
 /** Rates are per *hour*; 1s steps barely move 0.01, so the UI looked “frozen” with `Math.round`. */
 const LIVE_TICK_MS = 250;
@@ -42,19 +42,26 @@ function StatBar({
   label,
   value,
   accentClass,
+  stressed,
 }: {
   label: string;
   value: number;
   accentClass: string;
+  /** Red label + value when this stat is pulling Sandy toward sad. */
+  stressed?: boolean;
 }) {
   const w = Math.min(100, Math.max(0, value));
+  const textClass = stressed
+    ? "font-semibold text-red-600 dark:text-red-400"
+    : "text-foreground/80";
+  const valueClass = stressed
+    ? "font-mono text-sm font-semibold tabular-nums text-red-600 dark:text-red-400"
+    : "font-mono text-sm font-medium tabular-nums text-foreground";
   return (
     <div className="w-full max-w-md space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-foreground/80">{label}</span>
-        <span className="font-mono text-sm font-medium tabular-nums">
-          {formatStat(value)}
-        </span>
+        <span className={textClass}>{label}</span>
+        <span className={valueClass}>{formatStat(value)}</span>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
         <div
@@ -178,6 +185,7 @@ export function PetGame() {
 
   const sleeping = live.isSleeping;
   const asOf = simNow;
+  const sadHL = petSadStatHighlights(live);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-8 p-6">
@@ -201,24 +209,28 @@ export function PetGame() {
 
       <section className="flex flex-col gap-4">
         <StatBar
-          label="Satiated"
+          label="🍕 Satiated"
           value={satiatedFromStoredHunger(live.hunger)}
           accentClass="bg-amber-500"
+          stressed={!!sadHL?.satiated}
         />
         <StatBar
-          label="Hygiene"
+          label="🧽 Hygiene"
           value={live.hygiene}
           accentClass="bg-cyan-500"
+          stressed={!!sadHL?.hygiene}
         />
         <StatBar
-          label="Play / fun"
+          label="⚽ Play / fun"
           value={live.fun}
           accentClass="bg-pink-500"
+          stressed={!!sadHL?.fun}
         />
         <StatBar
-          label="Energy (sleep when low)"
+          label="⚡ Energy"
           value={live.rest}
           accentClass="bg-indigo-500"
+          stressed={!!sadHL?.energy}
         />
       </section>
 

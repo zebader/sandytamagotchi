@@ -8,13 +8,14 @@ import type { DecayedState } from "@/lib/pet-time";
 const HAPPY_SHEET = "/sprites/happy.webp";
 const SAD_SHEET = "/sprites/sad.webp";
 const SLEEP_SHEET = "/sprites/sleep.webp";
+const YARD_BACKGROUND = "/sprites/yard-background.png";
 
 const SPRITE_FRAMES = 8;
 /** Full loop duration for all frames (larger = slower). */
 const SPRITE_LOOP_MS = 2800;
 const FRAME_MS = Math.round(SPRITE_LOOP_MS / SPRITE_FRAMES);
 
-/** Rendered frame size inside the larger white stage (native art is 256×256 per frame). */
+/** Rendered frame size inside the yard stage (native art is 256×256 per frame). */
 const SPRITE_VIEW_PX = 128;
 
 /** “Lights out” dim when sleeping — fade in/out (ms). */
@@ -29,6 +30,25 @@ export function isPetMoodHappy(live: DecayedState): boolean {
     satiatedFromStoredHunger(live.hunger) > 50 &&
     live.rest > 50
   );
+}
+
+/** Which stat rows to stress in red when awake and sad (matches `isPetMoodHappy`). */
+export type PetSadHighlight = {
+  satiated: boolean;
+  hygiene: boolean;
+  fun: boolean;
+  energy: boolean;
+};
+
+export function petSadStatHighlights(live: DecayedState): PetSadHighlight | null {
+  if (live.isSleeping || isPetMoodHappy(live)) return null;
+  const needPlayOrClean = !(live.hygiene > 50 || live.fun > 50);
+  return {
+    satiated: satiatedFromStoredHunger(live.hunger) <= 50,
+    hygiene: needPlayOrClean,
+    fun: needPlayOrClean,
+    energy: live.rest <= 50,
+  };
 }
 
 export function petMoodHint(live: DecayedState): string | null {
@@ -71,11 +91,15 @@ export function PetSprite({ live }: { live: DecayedState }) {
   return (
     <div className="flex flex-col items-center gap-3">
       <div
-        className="relative mx-auto flex aspect-square w-full max-w-[min(90vw,384px)] items-center justify-center overflow-hidden rounded-2xl border border-zinc-300 bg-white shadow-inner dark:border-zinc-500"
+        className="relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 bg-cover bg-center shadow-inner dark:border-zinc-600"
+        style={{
+          backgroundImage: `url(${YARD_BACKGROUND})`,
+          backgroundPosition: "center 55%",
+        }}
         aria-label={sleeping ? "Pet is sleeping" : `Pet mood: ${label}`}
       >
         <div
-          className="flex shrink-0 items-center justify-center overflow-hidden"
+          className="absolute bottom-10 left-1/2 z-[1] flex -translate-x-1/2 shrink-0 items-center justify-center overflow-hidden"
           style={{ width: SPRITE_VIEW_PX, height: SPRITE_VIEW_PX }}
         >
           <div
