@@ -237,17 +237,17 @@ export function PetGame() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <ActionButton
           label="Feed"
-          disabled={isPending}
+          disabled={isPending || sleeping}
           onClick={() => act(feed)}
         />
         <ActionButton
           label="Clean"
-          disabled={isPending}
+          disabled={isPending || sleeping}
           onClick={() => act(clean)}
         />
         <ActionButton
           label="Play"
-          disabled={isPending}
+          disabled={isPending || sleeping}
           onClick={() => act(play)}
         />
         <ActionButton
