@@ -10,7 +10,7 @@ import {
 import {
   getOrCreatePet,
   feed,
-  clean,
+  cleanPoop,
   play,
   toggleSleep,
 } from "@/app/actions/pet";
@@ -156,6 +156,22 @@ export function PetGame() {
     });
   }
 
+  const onPoopClick = useCallback(
+    (id: string) => {
+      setError(null);
+      startTransition(async () => {
+        try {
+          const p = await cleanPoop(id);
+          applyServerState(p);
+          setNowMs(Date.now());
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Action failed");
+        }
+      });
+    },
+    [applyServerState]
+  );
+
   if (base === null && !error) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
@@ -205,7 +221,12 @@ export function PetGame() {
         </p>
       </header>
 
-      <PetSprite live={live} />
+      <PetSprite
+        live={live}
+        poops={base.yardPoops}
+        onPoopClick={onPoopClick}
+        poopInteractionDisabled={isPending || sleeping}
+      />
 
       <section className="flex flex-col gap-4">
         <StatBar
@@ -234,16 +255,11 @@ export function PetGame() {
         />
       </section>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-3">
         <ActionButton
           label="Feed"
           disabled={isPending || sleeping}
           onClick={() => act(feed)}
-        />
-        <ActionButton
-          label="Clean"
-          disabled={isPending || sleeping}
-          onClick={() => act(clean)}
         />
         <ActionButton
           label="Play"

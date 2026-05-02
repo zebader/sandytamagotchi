@@ -7,6 +7,11 @@ import { applyTimeDecay, clampStat, type DecayedState } from "@/lib/pet-time";
 import { ownerCookieOptions, OWNER_COOKIE } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import type { PetState } from "@/lib/pet-state";
+import {
+  HYGIENE_PER_POOP,
+  parseYardPoops,
+  reconcileYardPoops,
+} from "@/lib/pet-clean-game";
 
 const DEFAULT_STATS = {
   name: "Sandy" as const,
@@ -27,6 +32,7 @@ function toState(
     rest: number;
     isSleeping: boolean;
     updatedAt: Date;
+    yardPoops: unknown;
   },
   rates: PetRates,
   serverTime: Date
@@ -42,6 +48,7 @@ function toState(
     updatedAt: p.updatedAt.toISOString(),
     serverTime: serverTime.toISOString(),
     rates: { ...rates },
+    yardPoops: parseYardPoops(p.yardPoops),
   };
 }
 
@@ -55,6 +62,10 @@ export async function getOrCreatePet(): Promise<PetState> {
     const pet = await prisma.pet.findUnique({ where: { ownerId } });
     if (pet) {
       const decayed = applyTimeDecay(pet, now, rates);
+      const nextPoops = reconcileYardPoops(
+        parseYardPoops(pet.yardPoops),
+        decayed.hygiene
+      );
       const saved = await prisma.pet.update({
         where: { id: pet.id },
         data: {
@@ -63,6 +74,7 @@ export async function getOrCreatePet(): Promise<PetState> {
           fun: decayed.fun,
           rest: decayed.rest,
           isSleeping: decayed.isSleeping,
+          yardPoops: nextPoops,
           updatedAt: decayed.updatedAt,
         },
       });
@@ -81,6 +93,7 @@ export async function getOrCreatePet(): Promise<PetState> {
           fun: DEFAULT_STATS.fun,
           rest: DEFAULT_STATS.rest,
           isSleeping: DEFAULT_STATS.isSleeping,
+          yardPoops: [],
           updatedAt: now,
         },
       },
@@ -134,8 +147,43 @@ export async function feed(): Promise<PetState> {
   return mutatePet((d) => ({ ...d, hunger: clampStat(d.hunger - 25) }));
 }
 
-export async function clean(): Promise<PetState> {
-  return mutatePet((d) => ({ ...d, hygiene: clampStat(d.hygiene + 30) }));
+/** One poop click: +12.5 hygiene and one fewer poop (count follows hygiene). */
+export async function cleanPoop(poopId: string): Promise<PetState> {
+  const now = new Date();
+  const rates = getPetRates();
+  const ownerId = (await cookies()).get(OWNER_COOKIE)?.value;
+  if (!ownerId) {
+    return getOrCreatePet();
+  }
+
+  const pet = await prisma.pet.findUnique({ where: { ownerId } });
+  if (!pet) {
+    return getOrCreatePet();
+  }
+
+  const decayed = applyTimeDecay(pet, now, rates);
+  let poops = parseYardPoops(pet.yardPoops);
+  if (!poops.some((p) => p.id === poopId)) {
+    throw new Error("That mess is already gone");
+  }
+  poops = poops.filter((p) => p.id !== poopId);
+  const newHygiene = clampStat(decayed.hygiene + HYGIENE_PER_POOP);
+  const nextPoops = reconcileYardPoops(poops, newHygiene);
+
+  const saved = await prisma.pet.update({
+    where: { id: pet.id },
+    data: {
+      hunger: clampStat(decayed.hunger),
+      hygiene: newHygiene,
+      fun: clampStat(decayed.fun),
+      rest: clampStat(decayed.rest),
+      isSleeping: decayed.isSleeping,
+      yardPoops: nextPoops,
+      updatedAt: now,
+    },
+  });
+  revalidatePath("/");
+  return toState(saved, rates, now);
 }
 
 export async function play(): Promise<PetState> {

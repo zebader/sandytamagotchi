@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { satiatedFromStoredHunger } from "@/lib/pet-display";
+import type { YardPoop } from "@/lib/pet-clean-game";
 import type { DecayedState } from "@/lib/pet-time";
 
 /** 2048×256 WebP strips: 8 frames × 256×256, horizontal (left → right). */
@@ -20,6 +21,9 @@ const SPRITE_VIEW_PX = 128;
 
 /** “Lights out” dim when sleeping — fade in/out (ms). */
 const SLEEP_OVERLAY_MS = 500;
+
+const POOP_SPRITE = "/sprites/poop.png";
+const POOP_SIZE_PX = 44;
 
 /**
  * Happy when satiated and energy are above half, **and** either clean or having fun.
@@ -51,7 +55,17 @@ export function petSadStatHighlights(live: DecayedState): PetSadHighlight | null
   };
 }
 
-export function PetSprite({ live }: { live: DecayedState }) {
+export function PetSprite({
+  live,
+  poops = [],
+  onPoopClick,
+  poopInteractionDisabled = false,
+}: {
+  live: DecayedState;
+  poops?: YardPoop[];
+  onPoopClick?: (id: string) => void;
+  poopInteractionDisabled?: boolean;
+}) {
   const sleeping = live.isSleeping;
   const happy = isPetMoodHappy(live);
   const sheet = sleeping ? SLEEP_SHEET : happy ? HAPPY_SHEET : SAD_SHEET;
@@ -81,8 +95,39 @@ export function PetSprite({ live }: { live: DecayedState }) {
         sleeping ? "Pet is sleeping" : happy ? "Pet is happy" : "Pet is sad"
       }
     >
+        {/* Poops sit behind the pet so they never cover the animation. */}
         <div
-          className="absolute bottom-10 left-1/2 z-[1] flex -translate-x-1/2 shrink-0 items-center justify-center overflow-hidden"
+          className={`absolute inset-0 z-[1] ${poopInteractionDisabled ? "pointer-events-none" : ""}`}
+          aria-hidden={poops.length === 0}
+        >
+          {poops.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={poopInteractionDisabled}
+              onClick={() => onPoopClick?.(p.id)}
+              className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-md border-0 bg-transparent p-0.5 transition-transform duration-150 ease-out hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                left: `${p.leftPct}%`,
+                top: `${p.topPct}%`,
+                width: POOP_SIZE_PX,
+                height: POOP_SIZE_PX,
+              }}
+              aria-label="Pick up mess"
+            >
+              <img
+                src={POOP_SPRITE}
+                alt=""
+                width={POOP_SIZE_PX - 4}
+                height={POOP_SIZE_PX - 4}
+                className="h-full w-full object-contain"
+                draggable={false}
+              />
+            </button>
+          ))}
+        </div>
+        <div
+          className="pointer-events-none absolute bottom-10 left-1/2 z-[2] flex -translate-x-1/2 shrink-0 items-center justify-center overflow-hidden"
           style={{ width: SPRITE_VIEW_PX, height: SPRITE_VIEW_PX }}
         >
           <div

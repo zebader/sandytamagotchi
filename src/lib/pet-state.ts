@@ -1,4 +1,5 @@
 import type { PetRates } from "./pet-rates";
+import type { YardPoop } from "./pet-clean-game";
 
 export type PetState = {
   id: string;
@@ -19,4 +20,6 @@ export type PetState = {
   serverTime: string;
   /** Decay rates in use on the server (keeps client display in sync with the same rules). */
   rates: PetRates;
+  /** Persisted mess positions; same across reloads. */
+  yardPoops: YardPoop[];
 };

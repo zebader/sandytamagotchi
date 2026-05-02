@@ -22,6 +22,8 @@ model Pet {
   fun        Float
   rest       Float
   isSleeping Boolean  @default(false)
+  /** JSON array: `{ id, leftPct, topPct }[]` — persisted yard mess for stable positions across reloads. */
+  yardPoops  Json     @default("[]")
   updatedAt  DateTime
   createdAt  DateTime @default(now())
   owner      Owner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
