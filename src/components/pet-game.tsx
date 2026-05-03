@@ -206,26 +206,15 @@ export function PetGame() {
   }
 
   const sleeping = live.isSleeping;
-  const asOf = simNow;
   const sadHL = petSadStatHighlights(live);
   const inFeedFlow = feedMode !== "idle";
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-8 p-6">
       <header className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="font-title text-4xl tracking-tight text-foreground sm:text-5xl">
           {base.name}
         </h1>
-        {sleeping ? (
-          <p className="mt-1 text-sm text-violet-400">
-            Sleeping — stats tick slower &amp; energy recovers
-          </p>
-        ) : (
-          <p className="mt-1 text-sm text-foreground/50">Awake and needing care</p>
-        )}
-        <p className="mt-2 text-xs text-foreground/40" suppressHydrationWarning>
-          Server-aligned time (1 decimal) · {asOf.toLocaleString()}
-        </p>
       </header>
 
       {feedMode === "choose" ? (
@@ -302,12 +291,6 @@ export function PetGame() {
           onClick={() => act(toggleSleep)}
         />
       </div>
-
-      <p className="text-center text-xs text-foreground/40">
-        The clock is aligned to the server on each response so in-tab stats match
-        a full reload. Stats are stored as floats. Background resync keeps the DB
-        in step.
-      </p>
     </div>
   );
 }
