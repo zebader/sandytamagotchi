@@ -21,8 +21,8 @@ export function randomYardPoop(): YardPoop {
   return {
     id: newPoopId(),
     leftPct,
-    /** Lower third of the yard only (~66%–94% from top). */
-    topPct: 100 * (2 / 3) + Math.random() * (100 / 3 - 6),
+    /** Bottom quarter of the yard only (~75%–94% from top). */
+    topPct: 100 * (3 / 4) + Math.random() * (100 / 4 - 6),
   };
 }
 

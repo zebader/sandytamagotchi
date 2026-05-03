@@ -9,7 +9,8 @@ import type { DecayedState } from "@/lib/pet-time";
 const HAPPY_SHEET = "/sprites/happy.webp";
 const SAD_SHEET = "/sprites/sad.webp";
 const SLEEP_SHEET = "/sprites/sleep.webp";
-const YARD_BACKGROUND = "/sprites/yard-background.png";
+const YARD_BACKGROUND_DAY = "/sprites/yard-background.png";
+const YARD_BACKGROUND_NIGHT = "/sprites/yard-background-night.png";
 
 const SPRITE_FRAMES = 8;
 /** Full loop duration for all frames (larger = slower). */
@@ -19,7 +20,10 @@ const FRAME_MS = Math.round(SPRITE_LOOP_MS / SPRITE_FRAMES);
 /** Rendered frame size inside the yard stage (native art is 256×256 per frame). */
 const SPRITE_VIEW_PX = 128;
 
-/** “Lights out” dim when sleeping — fade in/out (ms). */
+/** Day ↔ night yard background crossfade (ms). */
+const SLEEP_BG_CROSSFADE_MS = 500;
+
+/** “Lights out” dim over the whole stage when sleeping (ms). */
 const SLEEP_OVERLAY_MS = 500;
 
 const POOP_SPRITE = "/sprites/poop.png";
@@ -84,17 +88,35 @@ export function PetSprite({
 
   const sheetW = SPRITE_VIEW_PX * SPRITE_FRAMES;
 
+  const bgTransition = `opacity ${SLEEP_BG_CROSSFADE_MS}ms ease-in-out`;
+
   return (
     <div
-      className="relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 bg-cover bg-center shadow-inner dark:border-zinc-600"
-      style={{
-        backgroundImage: `url(${YARD_BACKGROUND})`,
-        backgroundPosition: "center 55%",
-      }}
+      className="relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 shadow-inner dark:border-zinc-600"
       aria-label={
         sleeping ? "Pet is sleeping" : happy ? "Pet is happy" : "Pet is sad"
       }
     >
+        <div
+          className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
+          style={{
+            backgroundImage: `url(${YARD_BACKGROUND_NIGHT})`,
+            backgroundPosition: "center 55%",
+            opacity: sleeping ? 1 : 0,
+            transition: bgTransition,
+          }}
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
+          style={{
+            backgroundImage: `url(${YARD_BACKGROUND_DAY})`,
+            backgroundPosition: "center 55%",
+            opacity: sleeping ? 0 : 1,
+            transition: bgTransition,
+          }}
+          aria-hidden
+        />
         {/* Poops sit behind the pet so they never cover the animation. */}
         <div
           className={`absolute inset-0 z-[1] ${poopInteractionDisabled ? "pointer-events-none" : ""}`}
@@ -106,7 +128,7 @@ export function PetSprite({
               type="button"
               disabled={poopInteractionDisabled}
               onClick={() => onPoopClick?.(p.id)}
-              className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-md border-0 bg-transparent p-0.5 transition-transform duration-150 ease-out hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-md border-0 bg-transparent p-0.5 transition-transform duration-150 ease-out hover:scale-110 disabled:cursor-not-allowed"
               style={{
                 left: `${p.leftPct}%`,
                 top: `${p.topPct}%`,
@@ -142,7 +164,6 @@ export function PetSprite({
             }}
           />
         </div>
-        {/* Dim the stage when sleeping (fade ≈ lights out). */}
         <div
           className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-black"
           style={{
