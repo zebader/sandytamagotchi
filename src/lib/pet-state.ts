@@ -11,6 +11,8 @@ export type PetState = {
   /** Fatigue inverse of “energy”: high = rested, low = tired. UI label: Energy. */
   rest: number;
   isSleeping: boolean;
+  /** When the pet row was created (ISO). Used for “days since start” in the UI. */
+  createdAt: string;
   /** Server anchor time for the stat row (ISO). Client simulates forward with `rates`. */
   updatedAt: string;
   /**

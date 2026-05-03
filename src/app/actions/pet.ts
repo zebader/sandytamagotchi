@@ -32,6 +32,7 @@ function toState(
     fun: number;
     rest: number;
     isSleeping: boolean;
+    createdAt: Date;
     updatedAt: Date;
     yardPoops: unknown;
   },
@@ -46,6 +47,7 @@ function toState(
     fun: p.fun,
     rest: p.rest,
     isSleeping: p.isSleeping,
+    createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
     serverTime: serverTime.toISOString(),
     rates: { ...rates },

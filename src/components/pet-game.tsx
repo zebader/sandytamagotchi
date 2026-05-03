@@ -15,7 +15,10 @@ import {
   toggleSleep,
 } from "@/app/actions/pet";
 import type { PetState } from "@/lib/pet-state";
-import { satiatedFromStoredHunger } from "@/lib/pet-display";
+import {
+  petDayNumber,
+  satiatedFromStoredHunger,
+} from "@/lib/pet-display";
 import { applyTimeDecay, type DecayedState } from "@/lib/pet-time";
 import { PetSprite, petSadStatHighlights } from "@/components/pet-sprite";
 import { FeedChoose, FeedGame } from "@/components/feed-game";
@@ -208,6 +211,7 @@ export function PetGame() {
   const sleeping = live.isSleeping;
   const sadHL = petSadStatHighlights(live);
   const inFeedFlow = feedMode !== "idle";
+  const dayNumber = petDayNumber(base.createdAt, simNow);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-8 p-6">
@@ -215,6 +219,7 @@ export function PetGame() {
         <h1 className="font-title text-4xl tracking-tight text-foreground sm:text-5xl">
           {base.name}
         </h1>
+        <p className="mt-1.5 text-sm text-foreground/55">Day {dayNumber}</p>
       </header>
 
       {feedMode === "choose" ? (
