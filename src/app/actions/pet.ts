@@ -12,6 +12,7 @@ import {
   parseYardPoops,
   reconcileYardPoops,
 } from "@/lib/pet-clean-game";
+import { FOOD_CONFIG, feedDeltas, type FoodKind } from "@/lib/feed-game";
 
 const DEFAULT_STATS = {
   name: "Sandy" as const,
@@ -143,8 +144,26 @@ async function mutatePet(
   return toState(saved, rates, now);
 }
 
-export async function feed(): Promise<PetState> {
-  return mutatePet((d) => ({ ...d, hunger: clampStat(d.hunger - 25) }));
+/**
+ * Apply the outcome of a Feed catch round.
+ * - food: which item the player picked
+ * - caught: how many of the round's `total` items the player caught (clamped server-side)
+ *
+ * Mapping of caught -> stat changes lives in `lib/feed-game.ts` so client and server
+ * can never drift on balance.
+ */
+export async function feed(food: FoodKind, caught: number): Promise<PetState> {
+  const cfg = FOOD_CONFIG[food];
+  if (!cfg) {
+    throw new Error("Unknown food");
+  }
+  const safeCaught = Math.max(0, Math.min(cfg.total, Math.floor(caught)));
+  const { hungerDelta, restDelta } = feedDeltas(food, safeCaught, cfg.total);
+  return mutatePet((d) => ({
+    ...d,
+    hunger: clampStat(d.hunger + hungerDelta),
+    rest: clampStat(d.rest + restDelta),
+  }));
 }
 
 /** One poop click: +12.5 hygiene and one fewer poop (count follows hygiene). */

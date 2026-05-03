@@ -18,6 +18,8 @@ import type { PetState } from "@/lib/pet-state";
 import { satiatedFromStoredHunger } from "@/lib/pet-display";
 import { applyTimeDecay, type DecayedState } from "@/lib/pet-time";
 import { PetSprite, petSadStatHighlights } from "@/components/pet-sprite";
+import { FeedChoose, FeedGame } from "@/components/feed-game";
+import type { FoodKind } from "@/lib/feed-game";
 
 /** Rates are per *hour*; 1s steps barely move 0.01, so the UI looked “frozen” with `Math.round`. */
 const LIVE_TICK_MS = 250;
@@ -84,6 +86,10 @@ export function PetGame() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [feedMode, setFeedMode] = useState<"idle" | "choose" | "playing">(
+    "idle"
+  );
+  const [feedFood, setFeedFood] = useState<FoodKind | null>(null);
 
   const applyServerState = useCallback((p: PetState) => {
     setBase(p);
@@ -202,6 +208,7 @@ export function PetGame() {
   const sleeping = live.isSleeping;
   const asOf = simNow;
   const sadHL = petSadStatHighlights(live);
+  const inFeedFlow = feedMode !== "idle";
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-8 p-6">
@@ -221,12 +228,35 @@ export function PetGame() {
         </p>
       </header>
 
-      <PetSprite
-        live={live}
-        poops={base.yardPoops}
-        onPoopClick={onPoopClick}
-        poopInteractionDisabled={isPending || sleeping}
-      />
+      {feedMode === "choose" ? (
+        <FeedChoose
+          onPick={(food) => {
+            setFeedFood(food);
+            setFeedMode("playing");
+          }}
+          onCancel={() => {
+            setFeedFood(null);
+            setFeedMode("idle");
+          }}
+        />
+      ) : feedMode === "playing" && feedFood ? (
+        <FeedGame
+          food={feedFood}
+          onDone={(caught) => {
+            const food = feedFood;
+            setFeedMode("idle");
+            setFeedFood(null);
+            act(() => feed(food, caught));
+          }}
+        />
+      ) : (
+        <PetSprite
+          live={live}
+          poops={base.yardPoops}
+          onPoopClick={onPoopClick}
+          poopInteractionDisabled={isPending || sleeping}
+        />
+      )}
 
       <section className="flex flex-col gap-4">
         <StatBar
@@ -258,17 +288,17 @@ export function PetGame() {
       <div className="grid grid-cols-3 gap-3">
         <ActionButton
           label="Feed"
-          disabled={isPending || sleeping}
-          onClick={() => act(feed)}
+          disabled={isPending || sleeping || inFeedFlow}
+          onClick={() => setFeedMode("choose")}
         />
         <ActionButton
           label="Play"
-          disabled={isPending || sleeping}
+          disabled={isPending || sleeping || inFeedFlow}
           onClick={() => act(play)}
         />
         <ActionButton
           label={sleeping ? "Wake" : "Sleep"}
-          disabled={isPending}
+          disabled={isPending || inFeedFlow}
           onClick={() => act(toggleSleep)}
         />
       </div>
