@@ -3,6 +3,12 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getPetRates, type PetRates } from "@/lib/pet-rates";
+import {
+  countNeglectUtcDays,
+  parseSessionEndStats,
+  shouldSurrenderForNeglect,
+  type SessionEndStats,
+} from "@/lib/pet-neglect";
 import { applyTimeDecay, clampStat, type DecayedState } from "@/lib/pet-time";
 import { ownerCookieOptions, OWNER_COOKIE } from "@/lib/session";
 import { revalidatePath } from "next/cache";
@@ -23,6 +29,22 @@ const DEFAULT_STATS = {
   isSleeping: false,
 };
 
+function sessionEndStatsFromPet(p: {
+  hunger: number;
+  hygiene: number;
+  fun: number;
+  rest: number;
+  isSleeping: boolean;
+}): SessionEndStats {
+  return {
+    hunger: p.hunger,
+    hygiene: p.hygiene,
+    fun: p.fun,
+    rest: p.rest,
+    isSleeping: p.isSleeping,
+  };
+}
+
 function toState(
   p: {
     id: string;
@@ -35,6 +57,7 @@ function toState(
     createdAt: Date;
     updatedAt: Date;
     yardPoops: unknown;
+    isSurrendered: boolean;
   },
   rates: PetRates,
   serverTime: Date
@@ -52,40 +75,15 @@ function toState(
     serverTime: serverTime.toISOString(),
     rates: { ...rates },
     yardPoops: parseYardPoops(p.yardPoops),
+    isSurrendered: p.isSurrendered,
   };
 }
 
-export async function getOrCreatePet(): Promise<PetState> {
+async function createOwnerAndPet(): Promise<PetState> {
   const now = new Date();
   const rates = getPetRates();
   const cookieStore = await cookies();
-  const ownerId = cookieStore.get(OWNER_COOKIE)?.value;
-
-  if (ownerId) {
-    const pet = await prisma.pet.findUnique({ where: { ownerId } });
-    if (pet) {
-      const decayed = applyTimeDecay(pet, now, rates);
-      const nextPoops = reconcileYardPoops(
-        parseYardPoops(pet.yardPoops),
-        decayed.hygiene
-      );
-      const saved = await prisma.pet.update({
-        where: { id: pet.id },
-        data: {
-          hunger: decayed.hunger,
-          hygiene: decayed.hygiene,
-          fun: decayed.fun,
-          rest: decayed.rest,
-          isSleeping: decayed.isSleeping,
-          yardPoops: nextPoops,
-          updatedAt: decayed.updatedAt,
-        },
-      });
-      revalidatePath("/");
-      return toState(saved, rates, now);
-    }
-  }
-
+  const snapshot = sessionEndStatsFromPet(DEFAULT_STATS);
   const created = await prisma.owner.create({
     data: {
       pet: {
@@ -98,6 +96,9 @@ export async function getOrCreatePet(): Promise<PetState> {
           isSleeping: DEFAULT_STATS.isSleeping,
           yardPoops: [],
           updatedAt: now,
+          isSurrendered: false,
+          lastSessionEndAt: now,
+          lastSessionEndStats: snapshot,
         },
       },
     },
@@ -113,6 +114,173 @@ export async function getOrCreatePet(): Promise<PetState> {
   return toState(created.pet, rates, now);
 }
 
+/**
+ * First load / full session start: evaluates neglect (UTC bad-day count &gt; 3), may set
+ * `isSurrendered`, and persists decayed stats when the pet is still in your care.
+ */
+export async function startPetSession(): Promise<PetState> {
+  const now = new Date();
+  const rates = getPetRates();
+  const cookieStore = await cookies();
+  const ownerId = cookieStore.get(OWNER_COOKIE)?.value;
+
+  if (!ownerId) {
+    return createOwnerAndPet();
+  }
+
+  const pet = await prisma.pet.findUnique({ where: { ownerId } });
+  if (!pet) {
+    return createOwnerAndPet();
+  }
+
+  if (pet.isSurrendered) {
+    return toState(pet, rates, now);
+  }
+
+  const anchorFrom = pet.lastSessionEndAt ?? pet.createdAt;
+  const parsed = parseSessionEndStats(pet.lastSessionEndStats);
+  const anchorStats = parsed ?? sessionEndStatsFromPet(pet);
+  const neglectDays = countNeglectUtcDays(anchorFrom, now, anchorStats, rates);
+
+  const decayed = applyTimeDecay(pet, now, rates);
+  const nextPoops = reconcileYardPoops(
+    parseYardPoops(pet.yardPoops),
+    decayed.hygiene
+  );
+
+  if (shouldSurrenderForNeglect(neglectDays)) {
+    const saved = await prisma.pet.update({
+      where: { id: pet.id },
+      data: {
+        hunger: decayed.hunger,
+        hygiene: decayed.hygiene,
+        fun: decayed.fun,
+        rest: decayed.rest,
+        isSleeping: decayed.isSleeping,
+        yardPoops: nextPoops,
+        updatedAt: decayed.updatedAt,
+        isSurrendered: true,
+      },
+    });
+    revalidatePath("/");
+    return toState(saved, rates, now);
+  }
+
+  const saved = await prisma.pet.update({
+    where: { id: pet.id },
+    data: {
+      hunger: decayed.hunger,
+      hygiene: decayed.hygiene,
+      fun: decayed.fun,
+      rest: decayed.rest,
+      isSleeping: decayed.isSleeping,
+      yardPoops: nextPoops,
+      updatedAt: decayed.updatedAt,
+    },
+  });
+  revalidatePath("/");
+  return toState(saved, rates, now);
+}
+
+/**
+ * Lightweight sync: returns the stored row without persisting time decay, so in-tab
+ * simulation can advance from `updatedAt` without moving the neglect session anchor.
+ */
+export async function syncPetFromServer(): Promise<PetState> {
+  const now = new Date();
+  const rates = getPetRates();
+  const cookieStore = await cookies();
+  const ownerId = cookieStore.get(OWNER_COOKIE)?.value;
+
+  if (!ownerId) {
+    return createOwnerAndPet();
+  }
+
+  const pet = await prisma.pet.findUnique({ where: { ownerId } });
+  if (!pet) {
+    return createOwnerAndPet();
+  }
+
+  return toState(pet, rates, now);
+}
+
+/** @deprecated Prefer `startPetSession` or `syncPetFromServer`. */
+export async function getOrCreatePet(): Promise<PetState> {
+  return startPetSession();
+}
+
+/** Persist decayed stats and the session snapshot when the tab is hidden or unloaded. */
+export async function recordSessionEnd(): Promise<void> {
+  const now = new Date();
+  const rates = getPetRates();
+  const ownerId = (await cookies()).get(OWNER_COOKIE)?.value;
+  if (!ownerId) return;
+
+  const pet = await prisma.pet.findUnique({ where: { ownerId } });
+  if (!pet || pet.isSurrendered) return;
+
+  const decayed = applyTimeDecay(pet, now, rates);
+  const nextPoops = reconcileYardPoops(
+    parseYardPoops(pet.yardPoops),
+    decayed.hygiene
+  );
+  const snapshot = sessionEndStatsFromPet(decayed);
+
+  await prisma.pet.update({
+    where: { id: pet.id },
+    data: {
+      hunger: decayed.hunger,
+      hygiene: decayed.hygiene,
+      fun: decayed.fun,
+      rest: decayed.rest,
+      isSleeping: decayed.isSleeping,
+      yardPoops: nextPoops,
+      updatedAt: decayed.updatedAt,
+      lastSessionEndAt: now,
+      lastSessionEndStats: snapshot,
+    },
+  });
+  revalidatePath("/");
+}
+
+export async function resetAfterSurrender(): Promise<PetState> {
+  const now = new Date();
+  const rates = getPetRates();
+  const ownerId = (await cookies()).get(OWNER_COOKIE)?.value;
+  if (!ownerId) {
+    return createOwnerAndPet();
+  }
+
+  const pet = await prisma.pet.findUnique({ where: { ownerId } });
+  if (!pet) {
+    return createOwnerAndPet();
+  }
+  if (!pet.isSurrendered) {
+    throw new Error("Nothing to reset right now.");
+  }
+
+  const snapshot = sessionEndStatsFromPet(DEFAULT_STATS);
+  const saved = await prisma.pet.update({
+    where: { id: pet.id },
+    data: {
+      name: DEFAULT_STATS.name,
+      hunger: DEFAULT_STATS.hunger,
+      hygiene: DEFAULT_STATS.hygiene,
+      fun: DEFAULT_STATS.fun,
+      rest: DEFAULT_STATS.rest,
+      isSleeping: DEFAULT_STATS.isSleeping,
+      yardPoops: [],
+      updatedAt: now,
+      createdAt: now,
+      isSurrendered: false,
+      lastSessionEndAt: now,
+      lastSessionEndStats: snapshot,
+    },
+  });
+  revalidatePath("/");
+  return toState(saved, rates, now);
+}
+
 async function mutatePet(
   transform: (decayed: DecayedState) => DecayedState
 ): Promise<PetState> {
@@ -120,12 +288,17 @@ async function mutatePet(
   const rates = getPetRates();
   const ownerId = (await cookies()).get(OWNER_COOKIE)?.value;
   if (!ownerId) {
-    return getOrCreatePet();
+    return startPetSession();
   }
 
   const pet = await prisma.pet.findUnique({ where: { ownerId } });
   if (!pet) {
-    return getOrCreatePet();
+    return startPetSession();
+  }
+  if (pet.isSurrendered) {
+    throw new Error(
+      "Your pet is no longer in your care. Open the envelope to start over."
+    );
   }
 
   const decayed = applyTimeDecay(pet, now, rates);
@@ -174,12 +347,17 @@ export async function cleanPoop(poopId: string): Promise<PetState> {
   const rates = getPetRates();
   const ownerId = (await cookies()).get(OWNER_COOKIE)?.value;
   if (!ownerId) {
-    return getOrCreatePet();
+    return startPetSession();
   }
 
   const pet = await prisma.pet.findUnique({ where: { ownerId } });
   if (!pet) {
-    return getOrCreatePet();
+    return startPetSession();
+  }
+  if (pet.isSurrendered) {
+    throw new Error(
+      "Your pet is no longer in your care. Open the envelope to start over."
+    );
   }
 
   const decayed = applyTimeDecay(pet, now, rates);
@@ -217,4 +395,49 @@ export async function play(): Promise<PetState> {
 
 export async function toggleSleep(): Promise<PetState> {
   return mutatePet((d) => ({ ...d, isSleeping: !d.isSleeping }));
+}
+
+/**
+ * Development only: sets `isSurrendered` so you can test the envelope + modal flow
+ * without simulating multi-day neglect. No-op in production.
+ */
+export async function devTriggerSurrender(): Promise<PetState> {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("This action is only available in development.");
+  }
+  const now = new Date();
+  const rates = getPetRates();
+  const ownerId = (await cookies()).get(OWNER_COOKIE)?.value;
+  if (!ownerId) {
+    return startPetSession();
+  }
+
+  const pet = await prisma.pet.findUnique({ where: { ownerId } });
+  if (!pet) {
+    return startPetSession();
+  }
+  if (pet.isSurrendered) {
+    return toState(pet, rates, now);
+  }
+
+  const decayed = applyTimeDecay(pet, now, rates);
+  const nextPoops = reconcileYardPoops(
+    parseYardPoops(pet.yardPoops),
+    decayed.hygiene
+  );
+  const saved = await prisma.pet.update({
+    where: { id: pet.id },
+    data: {
+      hunger: decayed.hunger,
+      hygiene: decayed.hygiene,
+      fun: decayed.fun,
+      rest: decayed.rest,
+      isSleeping: decayed.isSleeping,
+      yardPoops: nextPoops,
+      updatedAt: decayed.updatedAt,
+      isSurrendered: true,
+    },
+  });
+  revalidatePath("/");
+  return toState(saved, rates, now);
 }

@@ -20,6 +20,9 @@ const FRAME_MS = Math.round(SPRITE_LOOP_MS / SPRITE_FRAMES);
 /** Rendered frame size inside the yard stage (native art is 256×256 per frame). */
 const SPRITE_VIEW_PX = 128;
 
+const YARD_STAGE_CLASS =
+  "relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 shadow-inner dark:border-zinc-600";
+
 /** Day ↔ night yard background crossfade (ms). */
 const SLEEP_BG_CROSSFADE_MS = 500;
 
@@ -92,7 +95,7 @@ export function PetSprite({
 
   return (
     <div
-      className="relative mx-auto aspect-square w-full max-w-[min(90vw,384px)] overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-200 shadow-inner dark:border-zinc-600"
+      className={YARD_STAGE_CLASS}
       aria-label={
         sleeping ? "Pet is sleeping" : happy ? "Pet is happy" : "Pet is sad"
       }
@@ -172,6 +175,78 @@ export function PetSprite({
           }}
           aria-hidden
         />
+    </div>
+  );
+}
+
+/**
+ * Same yard framing and day/night backgrounds as the living pet, with the sprite
+ * removed—only a note where the dog used to stand.
+ */
+export function SurrenderedYardNote({
+  nightYard,
+  onOpenNote,
+  disabled,
+}: {
+  /** When true, show the same night yard as a sleeping pet would. */
+  nightYard: boolean;
+  onOpenNote: () => void;
+  disabled?: boolean;
+}) {
+  const bgTransition = `opacity ${SLEEP_BG_CROSSFADE_MS}ms ease-in-out`;
+
+  return (
+    <div
+      className={YARD_STAGE_CLASS}
+      aria-label="A note was left in the yard"
+    >
+      <div
+        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
+        style={{
+          backgroundImage: `url(${YARD_BACKGROUND_NIGHT})`,
+          backgroundPosition: "center 55%",
+          opacity: nightYard ? 1 : 0,
+          transition: bgTransition,
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
+        style={{
+          backgroundImage: `url(${YARD_BACKGROUND_DAY})`,
+          backgroundPosition: "center 55%",
+          opacity: nightYard ? 0 : 1,
+          transition: bgTransition,
+        }}
+        aria-hidden
+      />
+      <div className="pointer-events-none absolute inset-0 z-[2]">
+        <button
+          type="button"
+          onClick={onOpenNote}
+          disabled={disabled}
+          className="pointer-events-auto absolute bottom-[30px] left-1/2 rounded-lg border-0 bg-transparent p-0 text-6xl leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/30 disabled:pointer-events-none disabled:opacity-50"
+          style={{
+            transform: "translateX(-50%) rotate3d(35, -10, 10, 45deg)",
+          }}
+          aria-label="Read the note from the shelter"
+        >
+          <span
+            className="inline-block transition-transform duration-150 ease-out hover:scale-110"
+            aria-hidden
+          >
+            ✉️
+          </span>
+        </button>
+      </div>
+      <div
+        className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-black"
+        style={{
+          opacity: nightYard ? 0.6 : 0,
+          transition: `opacity ${SLEEP_OVERLAY_MS}ms ease-in-out`,
+        }}
+        aria-hidden
+      />
     </div>
   );
 }

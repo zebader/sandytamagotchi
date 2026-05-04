@@ -24,4 +24,6 @@ export type PetState = {
   rates: PetRates;
   /** Persisted mess positions; same across reloads. */
   yardPoops: YardPoop[];
+  /** True after prolonged neglect; sprite is replaced until `resetAfterSurrender`. */
+  isSurrendered: boolean;
 };

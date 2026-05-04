@@ -8,7 +8,11 @@ import {
   useTransition,
 } from "react";
 import {
-  getOrCreatePet,
+  startPetSession,
+  syncPetFromServer,
+  recordSessionEnd,
+  resetAfterSurrender,
+  devTriggerSurrender,
   feed,
   cleanPoop,
   play,
@@ -20,13 +24,18 @@ import {
   satiatedFromStoredHunger,
 } from "@/lib/pet-display";
 import { applyTimeDecay, type DecayedState } from "@/lib/pet-time";
-import { PetSprite, petSadStatHighlights } from "@/components/pet-sprite";
+import {
+  PetSprite,
+  SurrenderedYardNote,
+  petSadStatHighlights,
+} from "@/components/pet-sprite";
 import { FeedChoose, FeedGame } from "@/components/feed-game";
 import type { FoodKind } from "@/lib/feed-game";
 
 /** Rates are per *hour*; 1s steps barely move 0.01, so the UI looked “frozen” with `Math.round`. */
 const LIVE_TICK_MS = 250;
 const SERVER_RESYNC_MS = 90_000;
+const IS_DEV = process.env.NODE_ENV === "development";
 
 function formatStat(n: number) {
   return n.toFixed(1);
@@ -93,6 +102,7 @@ export function PetGame() {
     "idle"
   );
   const [feedFood, setFeedFood] = useState<FoodKind | null>(null);
+  const [surrenderModalOpen, setSurrenderModalOpen] = useState(false);
 
   const applyServerState = useCallback((p: PetState) => {
     setBase(p);
@@ -103,7 +113,19 @@ export function PetGame() {
     setError(null);
     startTransition(async () => {
       try {
-        const p = await getOrCreatePet();
+        const p = await syncPetFromServer();
+        applyServerState(p);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load pet");
+      }
+    });
+  }, [applyServerState]);
+
+  const loadSession = useCallback(() => {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const p = await startPetSession();
         applyServerState(p);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load pet");
@@ -112,8 +134,8 @@ export function PetGame() {
   }, [applyServerState]);
 
   useEffect(() => {
-    resync();
-  }, [resync]);
+    loadSession();
+  }, [loadSession]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -129,13 +151,23 @@ export function PetGame() {
 
   useEffect(() => {
     function onVisibility() {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "hidden") {
+        void recordSessionEnd();
+      } else if (document.visibilityState === "visible") {
         resync();
       }
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [resync]);
+
+  useEffect(() => {
+    function onPageHide() {
+      void recordSessionEnd();
+    }
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
 
   const simNow = useMemo(() => {
     // nowMs advances on an interval to re-run this (Date.now() would otherwise be stale in deps)
@@ -145,11 +177,18 @@ export function PetGame() {
 
   const live: DecayedState | null = useMemo(() => {
     if (!base) return null;
-    return applyTimeDecay(
-      petAnchorFromState(base),
-      simNow,
-      base.rates
-    );
+    if (base.isSurrendered) {
+      const a = petAnchorFromState(base);
+      return {
+        hunger: a.hunger,
+        hygiene: a.hygiene,
+        fun: a.fun,
+        rest: a.rest,
+        isSleeping: a.isSleeping,
+        updatedAt: new Date(a.updatedAt),
+      };
+    }
+    return applyTimeDecay(petAnchorFromState(base), simNow, base.rates);
   }, [base, simNow]);
 
   function act(fn: () => Promise<PetState>) {
@@ -195,7 +234,7 @@ export function PetGame() {
         <p className="text-red-500">{error}</p>
         <button
           type="button"
-          onClick={resync}
+          onClick={loadSession}
           className="rounded-lg bg-foreground px-4 py-2 text-sm text-background"
         >
           Try again
@@ -212,6 +251,7 @@ export function PetGame() {
   const sadHL = petSadStatHighlights(live);
   const inFeedFlow = feedMode !== "idle";
   const dayNumber = petDayNumber(base.createdAt, simNow);
+  const surrendered = base.isSurrendered;
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-8 p-6">
@@ -222,7 +262,13 @@ export function PetGame() {
         <p className="mt-1.5 text-sm text-foreground/55">Day {dayNumber}</p>
       </header>
 
-      {feedMode === "choose" ? (
+      {surrendered ? (
+        <SurrenderedYardNote
+          nightYard={live.isSleeping}
+          onOpenNote={() => setSurrenderModalOpen(true)}
+          disabled={isPending}
+        />
+      ) : feedMode === "choose" ? (
         <FeedChoose
           onPick={(food) => {
             setFeedFood(food);
@@ -252,50 +298,146 @@ export function PetGame() {
         />
       )}
 
-      <section className="flex flex-col gap-4">
-        <StatBar
-          label="🍕 Satiated"
-          value={satiatedFromStoredHunger(live.hunger)}
-          accentClass="bg-amber-500"
-          stressed={!!sadHL?.satiated}
-        />
-        <StatBar
-          label="🧽 Hygiene"
-          value={live.hygiene}
-          accentClass="bg-cyan-500"
-          stressed={!!sadHL?.hygiene}
-        />
-        <StatBar
-          label="⚽ Play / fun"
-          value={live.fun}
-          accentClass="bg-pink-500"
-          stressed={!!sadHL?.fun}
-        />
-        <StatBar
-          label="⚡ Energy"
-          value={live.rest}
-          accentClass="bg-indigo-500"
-          stressed={!!sadHL?.energy}
-        />
-      </section>
+      {!surrendered ? (
+        <section className="flex flex-col gap-4">
+          <StatBar
+            label="🍕 Satiated"
+            value={satiatedFromStoredHunger(live.hunger)}
+            accentClass="bg-amber-500"
+            stressed={!!sadHL?.satiated}
+          />
+          <StatBar
+            label="🧽 Hygiene"
+            value={live.hygiene}
+            accentClass="bg-cyan-500"
+            stressed={!!sadHL?.hygiene}
+          />
+          <StatBar
+            label="⚽ Play / fun"
+            value={live.fun}
+            accentClass="bg-pink-500"
+            stressed={!!sadHL?.fun}
+          />
+          <StatBar
+            label="⚡ Energy"
+            value={live.rest}
+            accentClass="bg-indigo-500"
+            stressed={!!sadHL?.energy}
+          />
+        </section>
+      ) : null}
 
-      <div className="grid grid-cols-3 gap-3">
-        <ActionButton
-          label="Feed"
-          disabled={isPending || sleeping || inFeedFlow}
-          onClick={() => setFeedMode("choose")}
-        />
-        <ActionButton
-          label="Play"
-          disabled={isPending || sleeping || inFeedFlow}
-          onClick={() => act(play)}
-        />
-        <ActionButton
-          label={sleeping ? "Wake" : "Sleep"}
-          disabled={isPending || inFeedFlow}
-          onClick={() => act(toggleSleep)}
-        />
-      </div>
+      {!surrendered ? (
+        <div className="grid grid-cols-3 gap-3">
+          <ActionButton
+            label="Feed"
+            disabled={isPending || sleeping || inFeedFlow}
+            onClick={() => setFeedMode("choose")}
+          />
+          <ActionButton
+            label="Play"
+            disabled={isPending || sleeping || inFeedFlow}
+            onClick={() => act(play)}
+          />
+          <ActionButton
+            label={sleeping ? "Wake" : "Sleep"}
+            disabled={isPending || inFeedFlow}
+            onClick={() => act(toggleSleep)}
+          />
+        </div>
+      ) : null}
+
+      {IS_DEV && !surrendered ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => {
+              setError(null);
+              startTransition(async () => {
+                try {
+                  const p = await devTriggerSurrender();
+                  applyServerState(p);
+                  setNowMs(Date.now());
+                } catch (e) {
+                  setError(
+                    e instanceof Error ? e.message : "Dev surrender failed"
+                  );
+                }
+              });
+            }}
+            className="rounded-lg border border-amber-600/40 bg-amber-500/15 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-500/25 disabled:opacity-50 dark:text-amber-100"
+          >
+            Dev: trigger surrender
+          </button>
+        </div>
+      ) : null}
+
+      {surrenderModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onClick={() => setSurrenderModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="surrender-title"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto border-2 border-neutral-900 bg-white p-8 text-neutral-900 shadow-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-carattere text-neutral-900">
+              <h2
+                id="surrender-title"
+                className="border-b border-neutral-900 pb-3 text-3xl leading-snug tracking-wide"
+              >
+                The shelter stepped in
+              </h2>
+              <p className="mt-5 text-xl leading-relaxed text-neutral-800">
+                While you were away, more than three separate UTC calendar days
+                went by where satiated, hygiene, fun, or energy dropped below
+                50. {base.name} was not getting consistent care, so the shelter
+                took them in to keep them safe.
+              </p>
+              <p className="mt-4 text-lg leading-relaxed text-neutral-700">
+                Neglect is evaluated when you open the game again, using UTC
+                midnight boundaries so the rule is the same for everyone.
+              </p>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3 border-t border-neutral-300 pt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  startTransition(async () => {
+                    try {
+                      const p = await resetAfterSurrender();
+                      applyServerState(p);
+                      setSurrenderModalOpen(false);
+                      setNowMs(Date.now());
+                    } catch (e) {
+                      setError(
+                        e instanceof Error ? e.message : "Reset failed"
+                      );
+                    }
+                  });
+                }}
+                disabled={isPending}
+                className="border-2 border-neutral-900 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Start over with a new dog
+              </button>
+              <button
+                type="button"
+                onClick={() => setSurrenderModalOpen(false)}
+                className="border-2 border-neutral-900 bg-white px-4 py-2.5 text-sm font-medium text-neutral-900"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

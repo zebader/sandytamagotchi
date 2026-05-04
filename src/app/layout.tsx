@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Honk } from "next/font/google";
+import { Carattere, Geist, Geist_Mono, Honk } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +17,12 @@ const honk = Honk({
   subsets: ["latin"],
 });
 
+const carattere = Carattere({
+  variable: "--font-carattere",
+  subsets: ["latin"],
+  weight: "400",
+});
+
 export const metadata: Metadata = {
   title: "Tamagotchi",
   description: "A small persistent virtual pet in your browser",
@@ -30,7 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${honk.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${honk.variable} ${carattere.variable} antialiased`}
       >
         {children}
       </body>

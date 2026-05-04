@@ -10,6 +10,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         title: ["var(--font-honk)", "cursive", "fantasy"],
+        carattere: ["var(--font-carattere)", "cursive"],
       },
     },
   },

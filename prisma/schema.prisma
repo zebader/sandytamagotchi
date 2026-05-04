@@ -26,5 +26,11 @@ model Pet {
   yardPoops  Json     @default("[]")
   updatedAt  DateTime
   createdAt  DateTime @default(now())
+  /** Shelter took the pet after prolonged neglect; care actions disabled until reset. */
+  isSurrendered Boolean @default(false)
+  /** Wall time when the player last ended a session (`recordSessionEnd`); used for neglect windows. */
+  lastSessionEndAt DateTime?
+  /** Stats snapshot at `lastSessionEndAt`: `{ hunger, hygiene, fun, rest, isSleeping }`. */
+  lastSessionEndStats Json?
   owner      Owner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 }
