@@ -11,15 +11,24 @@ importers:
       '@prisma/client':
         specifier: ^6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      autoprefixer:
+        specifier: ^10.5.0
+        version: 10.5.0(postcss@8.5.10)
       next:
         specifier: 15.5.15
         version: 15.5.15(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      postcss:
+        specifier: ^8.5.10
+        version: 8.5.10
       react:
         specifier: 19.1.0
         version: 19.1.0
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      tailwindcss:
+        specifier: ^3.4.19
+        version: 3.4.19
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3
@@ -33,24 +42,15 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
-      autoprefixer:
-        specifier: ^10.5.0
-        version: 10.5.0(postcss@8.5.10)
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@1.21.7)
       eslint-config-next:
         specifier: 15.5.15
         version: 15.5.15(eslint@9.39.4(jiti@1.21.7))(typescript@5.9.3)
-      postcss:
-        specifier: ^8.5.10
-        version: 8.5.10
       prisma:
         specifier: ^6.19.3
         version: 6.19.3(typescript@5.9.3)
-      tailwindcss:
-        specifier: ^3.4.19
-        version: 3.4.19
       typescript:
         specifier: ^5
         version: 5.9.3
